@@ -9,13 +9,19 @@ from PIL import Image
 import numpy as np
 import copy
 
-from network import Net
+from networks import Encoder
 
 class DuplicatedCompose(object):
+    """Class for transforming images given a set of transformations
+    """
     def __init__(self, transforms):
+        """Initalizes image trasnformer object
+        transforms: a list of torchvision transforms
+        """
         self.transforms = transforms
 
     def __call__(self, img):
+        """Transforms image and returns two copies, one for query and one for queue"""
         img1 = img.copy()
         img2 = img.copy()
         for t in self.transforms:
@@ -24,10 +30,11 @@ class DuplicatedCompose(object):
         return img1, img2
 
 def momentum_update(model_q, model_k, beta = 0.999):
-    param_k = model_k.state_dict()
-    param_q = model_q.named_parameters()
+    param_k = model_k.state_dict() # key encoder params
+    param_q = model_q.named_parameters() #  query encoder params
     for n, q in param_q:
         if n in param_k:
+            # apply momentum update to key encoder
             param_k[n].data.copy_(beta*param_k[n].data + (1-beta)*q.data)
     model_k.load_state_dict(param_k)
 
@@ -41,7 +48,7 @@ def dequeue_data(data, K=4096):
         return data
 
 def initialize_queue(model_k, device, train_loader):
-    queue = torch.zeros((0, 128), dtype=torch.float) 
+    queue = torch.zeros((0, 128), dtype=torch.float)
     queue = queue.to(device)
 
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -94,48 +101,3 @@ def train(model_q, model_k, device, train_loader, queue, optimizer, epoch, temp=
     total_loss /= len(train_loader.dataset)
 
     print('Train Epoch: {} \tLoss: {:.6f}'.format(epoch, total_loss))
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='MoCo example: MNIST')
-    parser.add_argument('--batchsize', '-b', type=int, default=100,
-                        help='Number of images in each mini-batch')
-    parser.add_argument('--epochs', '-e', type=int, default=50,
-                        help='Number of sweeps over the dataset to train')
-    parser.add_argument('--out', '-o', default='result',
-                        help='Directory to output the result')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    args = parser.parse_args()
-
-    batchsize = args.batchsize
-    epochs = args.epochs
-    out_dir = args.out
-    
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-
-    kwargs = {'num_workers': 4, 'pin_memory': True}
-    
-    transform = DuplicatedCompose([
-        transforms.RandomRotation(20),
-        transforms.RandomResizedCrop(28, scale=(0.9, 1.1), ratio=(0.9, 1.1), interpolation=2),
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))])
-    
-    train_mnist = datasets.MNIST('./', train=True, download=True, transform=transform)
-    test_mnist = datasets.MNIST('./', train=False, download=True, transform=transform)
-    
-    train_loader = torch.utils.data.DataLoader(train_mnist, batch_size=batchsize, shuffle=True, **kwargs)
-    test_loader = torch.utils.data.DataLoader(test_mnist, batch_size=batchsize, shuffle=True, **kwargs)
-    
-    model_q = Net().to(device)
-    model_k = copy.deepcopy(model_q)
-    optimizer = optim.SGD(model_q.parameters(), lr=0.01, weight_decay=0.0001)
-    
-    queue = initialize_queue(model_k, device, train_loader)
-   
-    for epoch in range(1, epochs + 1):
-        train(model_q, model_k, device, train_loader, queue, optimizer, epoch)
-    
-    os.makedirs(out_dir, exist_ok=True)
-    torch.save(model_q.state_dict(), os.path.join(out_dir, 'model.pth'))
