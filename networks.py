@@ -15,7 +15,8 @@ class Encoder(nn.Module):
         args = {'stride':1, 'padding':1}  # arguments for both convolutional layers
         self.conv1 = nn.Conv2d(3, 36, 3, **args)
         self.conv2 = nn.Conv2d(36, 72, 3, **args)
-        self.fc1 = nn.Linear(18432, 128)
+        self.fc1 = nn.Linear(18432, 4000)
+        self.fc2 = nn.Linear(4000, 128)
 
     def forward(self, x):
         # layer 1
@@ -28,7 +29,8 @@ class Encoder(nn.Module):
 
         #fully-connected layers
         x = torch.flatten(x, 1)
-        x = self.fc1(x)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
         x = F.normalize(x) # nomralizes all the features to 0-1
         return x
 

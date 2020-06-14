@@ -6,6 +6,7 @@ __pycache__/
 # custom folds
 results/
 data/
+*.ini
 
 # C extensions
 *.so
